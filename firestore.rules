@@ -1,0 +1,102 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+
+    function isMember(cid) {
+      return signedIn()
+        && request.auth.uid in get(/databases/$(database)/documents/couples/$(cid)).data.memberUids;
+    }
+
+    function validExpense() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['id','date','amount','payer','cat','memo','method','ratioA','amtA','kA','kB','pending','reflect','settled','by','at'])
+        && d.keys().hasAll(['id','date','amount','payer','cat','method','settled'])
+        && d.amount is int && d.amount > 0 && d.amount < 100000000
+        && d.payer in ['a','b']
+        && d.date is string && d.date.size() == 10
+        && d.method in ['ratio','amount','all_a','all_b']
+        && (!('memo' in d) || (d.memo is string && d.memo.size() <= 100))
+        && d.settled is bool
+        && (!('by' in d) || d.by in ['a','b','x'])
+        && (!('at' in d) || d.at is int);
+    }
+
+    function validSettlement() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['id','date','from','to','amount'])
+        && d.keys().hasAll(['id','date','from','to','amount'])
+        && d.amount is int && d.amount > 0 && d.amount < 100000000
+        && d.from in ['a','b'] && d.to in ['a','b']
+        && d.date is string && d.date.size() == 10;
+    }
+
+    function validFixed() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['id','cat','memo','amount','day','payer','lastYm'])
+        && d.keys().hasAll(['id','cat','amount','day','payer'])
+        && d.amount is int && d.amount > 0 && d.amount < 100000000
+        && d.day is int && d.day >= 1 && d.day <= 31
+        && d.payer in ['a','b']
+        && (!('memo' in d) || (d.memo is string && d.memo.size() <= 40));
+    }
+
+    function validNote() {
+      let d = request.resource.data;
+      return d.keys().hasOnly(['id','text','by','at','done'])
+        && d.keys().hasAll(['id','text'])
+        && d.text is string && d.text.size() >= 1 && d.text.size() <= 300
+        && (!('by' in d) || d.by in ['a','b'])
+        && (!('done' in d) || d.done is bool);
+    }
+
+    // invite code -> couple id. Readable one document at a time only (no listing).
+    match /invites/{code} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['cid','createdAt'])
+        && request.resource.data.cid is string && request.resource.data.cid.size() == 20
+        && isMember(request.resource.data.cid);
+      allow update: if false;
+      allow delete: if signedIn() && isMember(resource.data.cid);
+    }
+
+    match /couples/{cid} {
+      allow get, list: if signedIn() && request.auth.uid in resource.data.memberUids;
+      allow create: if signedIn()
+        && cid.size() == 20
+        && request.resource.data.memberUids == [request.auth.uid]
+        && request.resource.data.keys().hasOnly(['memberUids','members','ratioA','inviteCode','createdAt']);
+      allow update: if signedIn() && (
+        // a member edits settings (the member list itself stays the same)
+        ( request.auth.uid in resource.data.memberUids
+          && request.resource.data.memberUids == resource.data.memberUids )
+        // the partner joins: only while one seat is free, and only the member list changes
+        || ( !(request.auth.uid in resource.data.memberUids)
+          && resource.data.memberUids.size() == 1
+          && request.resource.data.memberUids == resource.data.memberUids.concat([request.auth.uid])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberUids']) )
+      );
+      allow delete: if false;
+
+      match /expenses/{id} {
+        allow read, delete: if isMember(cid);
+        allow create, update: if isMember(cid) && validExpense();
+      }
+      match /settlements/{id} {
+        allow read, delete: if isMember(cid);
+        allow create, update: if isMember(cid) && validSettlement();
+      }
+      match /notes/{id} {
+        allow read, delete: if isMember(cid);
+        allow create, update: if isMember(cid) && validNote();
+      }
+      match /fixedCosts/{id} {
+        allow read, delete: if isMember(cid);
+        allow create, update: if isMember(cid) && validFixed();
+      }
+    }
+  }
+}

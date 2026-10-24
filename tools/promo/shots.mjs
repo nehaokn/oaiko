@@ -1,0 +1,17 @@
+import {session,OUT,srv} from './cap.mjs';
+const {b,pg}=await session();
+const shot=async n=>{await pg.waitForTimeout(350);await pg.screenshot({path:`${OUT}/${n}.png`});};
+await shot('home');
+await pg.click('[data-act=add]');await pg.fill('#f-amount','3480');await pg.click('[data-act=payer][data-w=b]');await shot('add');
+await pg.evaluate(()=>document.querySelector('.sheet').scrollTo(0,9999));await shot('add_method');
+await pg.click('.sheet [data-act=close]');
+await pg.click('[data-act=settle]');await shot('settle');await pg.click('.sheet [data-act=close]');
+await pg.click('[data-act=tab][data-v=report]');await shot('report');
+await pg.evaluate(()=>window.scrollTo(0,520));await shot('report2');await pg.evaluate(()=>window.scrollTo(0,0));
+await pg.click('[data-act=tab][data-v=history]');await shot('history');
+await pg.click('[data-act=tab][data-v=settings]');await pg.evaluate(()=>window.scrollTo(0,520));await shot('settings');
+await pg.click('[data-act=cats-open]');await shot('cats');await pg.click('.sheet [data-act=close]');
+await b.close();
+const s2=await session({seed:{waiting:true}});
+await s2.pg.waitForSelector('text=招待を送る');await s2.pg.screenshot({path:`${OUT}/invite.png`});
+await s2.b.close();srv.close();

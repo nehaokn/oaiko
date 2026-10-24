@@ -1,0 +1,7 @@
+node_modules
+tools/promo/shots/
+tools/promo/vid/
+tools/promo/out/
+tools/promo/remotion/public/
+tools/promo/package*.json
+tools/promo/render.log
